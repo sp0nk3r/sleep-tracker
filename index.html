@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sleep Tracker — Live Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0b0b0e;
+    --surface:   #111115;
+    --surface2:  #17171d;
+    --border:    #1f1f28;
+    --border2:   #2a2a36;
+    --text:      #e8e8f0;
+    --muted:     #6b6b82;
+    --accent:    #f59e0b;
+    --accent-dim:#7a4e06;
+    --green:     #22c55e;
+    --red:       #ef4444;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  /* ─── Layout ─────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-rows: 48px 1fr 110px;
+    height: 100dvh;
+  }
+
+  /* ─── Header ─────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 12px;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .header-center {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    max-width: 340px;
+    margin: 0 auto;
+  }
+
+  #ws-url {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    outline: none;
+  }
+  #ws-url:focus { border-color: var(--accent); }
+
+  #connect-btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  #connect-btn:hover { opacity: 0.85; }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-pill.live .status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-pill.live { color: var(--green); }
+  .status-pill.error .status-dot { background: var(--red); }
+  .status-pill.error { color: var(--red); }
+
+  /* ─── Main ────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    overflow: hidden;
+  }
+
+  /* ─── 3D Canvas ───────────────────────────── */
+  #canvas-wrap {
+    position: relative;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+  }
+  #three-canvas { display: block; width: 100%; height: 100%; }
+
+  .canvas-label {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* ─── Data Panels ─────────────────────────── */
+  .panels {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--surface);
+    scrollbar-width: none;
+  }
+
+  .panel {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+
+  .panel-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .axis-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .axis-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+
+  .axis-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .axis-val {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .axis-unit {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* orientation panel */
+  .orient-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .orient-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .orient-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-dim);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .orient-val {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .orient-unit {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ─── Footer Bar ──────────────────────────── */
+  footer {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .smv-panel {
+    padding: 12px 20px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .smv-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .smv-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .smv-val {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .smv-unit {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .smv-state {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-left: auto;
+  }
+  .smv-state.still  { color: var(--green); }
+  .smv-state.moving { color: var(--accent); }
+  .smv-state.asleep { color: var(--green); letter-spacing: 0.14em; }
+  .smv-state.awake  { color: var(--accent); }
+
+  #smv-chart {
+    display: block;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .meta-panel {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .meta-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .meta-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hz-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">Sleep Tracker</div>
+    <div class="header-center">
+      <input id="ws-url" type="text" value="ws://sleep-tracker.local:81" spellcheck="false">
+      <button id="connect-btn">Connect</button>
+    </div>
+    <div class="status-pill" id="status-pill">
+      <div class="status-dot"></div>
+      <span id="status-text">OFFLINE</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <div id="canvas-wrap">
+      <canvas id="three-canvas"></canvas>
+      <div class="canvas-label">3D Orientation — Complementary Filter</div>
+    </div>
+
+    <div class="panels">
+      <!-- Accelerometer -->
+      <div class="panel">
+        <div class="panel-title">Accelerometer</div>
+        <div class="axis-grid">
+          <div class="axis-cell">
+            <div class="axis-label">AX</div>
+            <div class="axis-val" id="v-ax">—</div>
+            <div class="axis-unit">g</div>
+          </div>
+          <div class="axis-cell">
+            <div class="axis-label">AY</div>
+            <div class="axis-val" id="v-ay">—</div>
+            <div class="axis-unit">g</div>
+          </div>
+          <div class="axis-cell">
+            <div class="axis-label">AZ</div>
+            <div class="axis-val" id="v-az">—</div>
+            <div class="axis-unit">g</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gyroscope -->
+      <div class="panel">
+        <div class="panel-title">Gyroscope</div>
+        <div class="axis-grid">
+          <div class="axis-cell">
+            <div class="axis-label">GX</div>
+            <div class="axis-val" id="v-gx">—</div>
+            <div class="axis-unit">rad/s</div>
+          </div>
+          <div class="axis-cell">
+            <div class="axis-label">GY</div>
+            <div class="axis-val" id="v-gy">—</div>
+            <div class="axis-unit">rad/s</div>
+          </div>
+          <div class="axis-cell">
+            <div class="axis-label">GZ</div>
+            <div class="axis-val" id="v-gz">—</div>
+            <div class="axis-unit">rad/s</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orientation -->
+      <div class="panel">
+        <div class="panel-title">Orientation (Comp. Filter)</div>
+        <div class="orient-grid">
+          <div class="orient-cell">
+            <div class="orient-label">PITCH</div>
+            <div class="orient-val" id="v-pitch">—</div>
+            <div class="orient-unit">degrees</div>
+          </div>
+          <div class="orient-cell">
+            <div class="orient-label">ROLL</div>
+            <div class="orient-val" id="v-roll">—</div>
+            <div class="orient-unit">degrees</div>
+          </div>
+          <div class="orient-cell">
+            <div class="orient-label">YAW</div>
+            <div class="orient-val" id="v-yaw">—</div>
+            <div class="orient-unit">deg (drift)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="smv-panel">
+      <div class="smv-header">
+        <div class="smv-title">Signal Magnitude Vector</div>
+        <div class="smv-val" id="v-smv">—</div>
+        <div class="smv-unit">g</div>
+        <div class="smv-state still" id="v-state">—</div>
+      </div>
+      <canvas id="smv-chart"></canvas>
+    </div>
+    <div class="meta-panel">
+      <div class="meta-row">
+        <div class="meta-label">Temp</div>
+        <div class="meta-val" id="v-temp">— °C</div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-label">Rate</div>
+        <div class="hz-badge" id="v-hz">— Hz</div>
+      </div>
+      <div class="meta-row">
+        <div class="meta-label">Packets</div>
+        <div class="meta-val" id="v-pkts">0</div>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ─── Three.js Setup ──────────────────────────────────────────
+const wrap  = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+camera.position.set(0, 1.2, 4);
+camera.lookAt(0, 0, 0);
+
+// Ambient + directional lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const sun = new THREE.DirectionalLight(0xf59e0b, 1.2);
+sun.position.set(3, 5, 3);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x6366f1, 0.3);
+fill.position.set(-3, -2, -3);
+scene.add(fill);
+
+// PCB-like box — roughly ESP32 proportions (5.5cm × 2.8cm × 0.7cm scaled)
+const geo = new THREE.BoxGeometry(2.0, 0.25, 1.0);
+const mat = new THREE.MeshStandardMaterial({
+  color: 0x1a3a2a,
+  metalness: 0.3,
+  roughness: 0.6,
+});
+const box = new THREE.Mesh(geo, mat);
+scene.add(box);
+
+// Edge wireframe overlay
+const edgeGeo = new THREE.EdgesGeometry(geo);
+const edgeMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 1 });
+const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+box.add(edges);
+
+// Axis helper
+const axisHelper = new THREE.AxesHelper(1.0);
+scene.add(axisHelper);
+
+// Grid
+const grid = new THREE.GridHelper(6, 12, 0x1f1f28, 0x1f1f28);
+grid.position.y = -0.8;
+scene.add(grid);
+
+function resize() {
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resize();
+new ResizeObserver(resize).observe(wrap);
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ─── SMV Chart ───────────────────────────────────────────────
+const smvCanvas = document.getElementById('smv-chart');
+const smvCtx    = smvCanvas.getContext('2d');
+const SMV_HISTORY = 200;
+const smvBuf = new Float32Array(SMV_HISTORY).fill(1.0);
+let smvHead = 0;
+const SMV_STILL     = 0.92;   // g   — baseline still = 0.88g
+const VAR_THRESHOLD = 0.0005; // g²  — baseline variance ≈ 0
+const SUSTAIN_MS    = 30000;  // ms  — 30s sustained before SLEEP
+
+function drawSmvChart(currentSmv) {
+  smvBuf[smvHead % SMV_HISTORY] = currentSmv;
+  smvHead++;
+
+  const w = smvCanvas.offsetWidth;
+  const h = smvCanvas.offsetHeight;
+  if (w < 1 || h < 1) return;
+  smvCanvas.width  = w;
+  smvCanvas.height = h;
+
+  smvCtx.clearRect(0, 0, w, h);
+
+  // threshold line
+  const range = [0.8, 1.4];
+  const yThresh = h - ((SMV_STILL - range[0]) / (range[1] - range[0])) * h;
+  smvCtx.strokeStyle = 'rgba(34,197,94,0.25)';
+  smvCtx.lineWidth = 1;
+  smvCtx.setLineDash([3, 4]);
+  smvCtx.beginPath();
+  smvCtx.moveTo(0, yThresh);
+  smvCtx.lineTo(w, yThresh);
+  smvCtx.stroke();
+  smvCtx.setLineDash([]);
+
+  // chart line
+  smvCtx.strokeStyle = '#f59e0b';
+  smvCtx.lineWidth = 1.5;
+  smvCtx.beginPath();
+  for (let i = 0; i < SMV_HISTORY; i++) {
+    const idx = (smvHead + i) % SMV_HISTORY;
+    const x = (i / (SMV_HISTORY - 1)) * w;
+    const val = Math.max(range[0], Math.min(range[1], smvBuf[idx]));
+    const y = h - ((val - range[0]) / (range[1] - range[0])) * h;
+    i === 0 ? smvCtx.moveTo(x, y) : smvCtx.lineTo(x, y);
+  }
+  smvCtx.stroke();
+}
+
+// ─── Complementary Filter ────────────────────────────────────
+const ALPHA = 0.98;
+let pitch = 0, roll = 0, yaw = 0;
+let lastTs = null;
+
+function updateFilter(ax, ay, az, gx, gy, gz, ts) {
+  if (lastTs === null) { lastTs = ts; return; }
+  const dt = Math.min((ts - lastTs) / 1000, 0.1); // cap at 100ms
+  lastTs = ts;
+
+  const accelPitch = Math.atan2(ay, Math.sqrt(ax*ax + az*az));
+  const accelRoll  = Math.atan2(-ax, az);
+
+  pitch = ALPHA * (pitch + gx * dt) + (1 - ALPHA) * accelPitch;
+  roll  = ALPHA * (roll  + gy * dt) + (1 - ALPHA) * accelRoll;
+  yaw  += gz * dt;
+
+  box.rotation.x =  pitch;
+  box.rotation.z = -roll;
+  box.rotation.y =  yaw;
+}
+
+// ─── DOM helpers ─────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt  = (v, d=2) => v.toFixed(d);
+const fmtD = (rad)    => (rad * 180 / Math.PI).toFixed(1);
+
+function updateUI(d) {
+  $('v-ax').textContent    = fmt(d.ax);
+  $('v-ay').textContent    = fmt(d.ay);
+  $('v-az').textContent    = fmt(d.az);
+  $('v-gx').textContent    = fmt(d.gx, 3);
+  $('v-gy').textContent    = fmt(d.gy, 3);
+  $('v-gz').textContent    = fmt(d.gz, 3);
+  $('v-smv').textContent   = fmt(d.smv, 3);
+  $('v-temp').textContent  = fmt(d.temp, 1) + ' °C';
+  $('v-pitch').textContent = fmtD(pitch);
+  $('v-roll').textContent  = fmtD(roll);
+  $('v-yaw').textContent   = fmtD(yaw);
+
+  // Sleep = SMV below threshold AND variance below threshold, sustained 30s
+  const varWindow = smvBuf;  // reuse the circular buffer for variance calc
+  const n = SMV_HISTORY;
+  let sum = 0, sumSq = 0;
+  for (let i = 0; i < n; i++) { sum += varWindow[i]; sumSq += varWindow[i] * varWindow[i]; }
+  const liveVar = (sumSq - (sum * sum) / n) / (n - 1);
+
+  const bothStill = d.smv < SMV_STILL && liveVar < VAR_THRESHOLD;
+  if (bothStill) {
+    if (sleepOnsetTime === null) sleepOnsetTime = Date.now();
+  } else {
+    sleepOnsetTime = null;
+  }
+  const asleep = sleepOnsetTime !== null && (Date.now() - sleepOnsetTime) >= SUSTAIN_MS;
+
+  const stateEl = $('v-state');
+  stateEl.textContent = asleep ? 'ASLEEP' : (bothStill ? 'STILL' : 'MOVING');
+  stateEl.className   = 'smv-state ' + (asleep ? 'asleep' : (bothStill ? 'still' : 'awake'));
+
+  drawSmvChart(d.smv);
+}
+
+// ─── Sleep state ─────────────────────────────────────────────
+let sleepOnsetTime = null;  // timestamp when both-still condition first became true
+
+// ─── Hz counter ──────────────────────────────────────────────
+let pktCount = 0, pktTotal = 0, hzTimer = null;
+function startHzCounter() {
+  hzTimer = setInterval(() => {
+    $('v-hz').textContent = pktCount + ' Hz';
+    pktCount = 0;
+  }, 1000);
+}
+function stopHzCounter() {
+  clearInterval(hzTimer);
+  $('v-hz').textContent = '— Hz';
+}
+
+// ─── WebSocket ───────────────────────────────────────────────
+let socket = null;
+
+function setStatus(state) {
+  const pill = $('status-pill');
+  const txt  = $('status-text');
+  pill.className = 'status-pill ' + state;
+  txt.textContent = { live: 'LIVE', error: 'ERROR', '': 'OFFLINE' }[state] || 'OFFLINE';
+}
+
+function connect(url) {
+  if (socket) { socket.close(); socket = null; }
+  setStatus('');
+  try {
+    socket = new WebSocket(url);
+  } catch(e) {
+    setStatus('error'); return;
+  }
+
+  socket.onopen  = () => { setStatus('live'); startHzCounter(); };
+  socket.onclose = () => { setStatus(''); stopHzCounter(); sleepOnsetTime = null; };
+  socket.onerror = () => { setStatus('error'); };
+
+  socket.onmessage = (ev) => {
+    let d;
+    try { d = JSON.parse(ev.data); } catch { return; }
+    pktCount++;
+    pktTotal++;
+    $('v-pkts').textContent = pktTotal;
+
+    // use device timestamp for filter if available, else Date.now()
+    const ts = d.ts !== undefined ? d.ts : Date.now();
+    updateFilter(d.ax, d.ay, d.az, d.gx, d.gy, d.gz, ts);
+    updateUI(d);
+  };
+}
+
+$('connect-btn').addEventListener('click', () => {
+  connect($('ws-url').value.trim());
+});
+
+// Auto-connect on load
+connect($('ws-url').value.trim());
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# Credentials — never commit
+firmware/src/sleep_tracker/credentials.h
+
+# Session data — large files, personal biometric data
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Plot output
+analysis/*.png
+
+# Arduino build artifacts
+build/
+*.elf
+*.bin
+*.map
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
